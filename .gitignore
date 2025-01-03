@@ -1,2 +1,5 @@
 # ignore the /data directory
 /data
+/output/naive/raw
+/output/preprocessed/raw
+/output/raw_data
