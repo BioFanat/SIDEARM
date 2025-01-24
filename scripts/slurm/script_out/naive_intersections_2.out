@@ -1,3 +1,6 @@
-Takes 31.83 seconds to read hg19
-Scaling Factor: 0.9879857723577233
-Takes 979.01 seconds to process NFY - Naive Version
+Takes 31.81 seconds to read hg19
+Scaling Factor: 0.9900948509485094
+Takes 8115.93 seconds to process NFY - Preprocessed Version
+Takes 35.92 seconds to read hg19
+Scaling Factor: 0.9898380758807588
+Takes 21300.18 seconds to process NFY - Naive Version

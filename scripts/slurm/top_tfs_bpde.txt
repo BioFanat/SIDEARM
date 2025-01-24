@@ -1,0 +1,5 @@
+SOX_1
+CTCF
+NRF1
+ETS_1
+NFY

@@ -3,6 +3,7 @@ import pandas as pd
 import struct
 import numpy as np
 import time
+import argparse
 
 def match_C_3mer(seq):
     mapping_edge = {'A': '00', 'C': '01', 'G': '10', 'T': '11'}
@@ -42,13 +43,13 @@ def sliding_window(key, seq, categories, region_id, mode):
     for i in range(len(seq) - length + 1):
         cur = seq[i:i+length].upper()
         index = match_func(cur)
-        if index < 32:
+        if index < 16:
             result_tuple = (region_id, i + 1, 0) #(chrom, i + 1, site_strand, region_id, 0)
             categories[index].append(result_tuple)
     
     return categories
 
-def compress_3mer(tup, region_bits=20, pos_bits=9, strand_bits=0):
+def compress_3mer(tup, region_bits=16, pos_bits=9, strand_bits=0):
     dmg_bits = 31 - region_bits - pos_bits - strand_bits
     region = f'{tup[0]:0{region_bits}b}'
     pos = f'{tup[1]:0{pos_bits}b}'
@@ -67,7 +68,7 @@ def compress_3mer(tup, region_bits=20, pos_bits=9, strand_bits=0):
 
     return int(region + pos + strand + dmg, 2)
 
-def write_compression(index, output='../data/encodings/lung_mutations_packed.bin'):
+def write_compression(index, output='../data/encodings/uv_fibroblasts_3mer_packed.bin'):
     bin_file = open(output, 'wb')
     index_id = 0
     # max_region = 0
@@ -83,11 +84,11 @@ def write_compression(index, output='../data/encodings/lung_mutations_packed.bin
     
     bin_file.write(struct.pack('I', 2**31 + index_id))
 
-def decompress_3mer(site_code, region_bits=20, pos_bits=9, strand_bits=0):
+def decompress_3mer(site_code, region_bits=16, pos_bits=9, strand_bits=0):
     string = f'{site_code:032b}'
 
     if int(string[0]) == 1:
-        return ('NEW', int(string[-5:], 2))
+        return ('NEW', int(string[-4:], 2))
 
     string = string[1:]
 
@@ -129,7 +130,7 @@ def generate_categories(genome, mutations, output):
 def perform_run(file_path, index, id): #uses MUTATIONS instead
     bin_file = open(file_path, 'rb')
 
-    run_file = open(f'/usr/xtmp/bc301/sim_data_lung_mut/acc_run_{id}.bin', 'wb')
+    run_file = open(f'/usr/xtmp/bc301/sim_data_skin_mut_atac/acc_run_{id}.bin', 'wb')
     #run_file = open(f'encodings/simulated_mut_{id}.bin', 'wb')
 
     data = bin_file.read(4)
@@ -152,6 +153,7 @@ def perform_run(file_path, index, id): #uses MUTATIONS instead
         source = decompress_3mer(struct.unpack('I', data)[0])
         
         if source[0] == "NEW":
+            print(current_id, "-", index[current_id])
             
             dmg_sum = 0
             if len(arr) > 0:
@@ -179,6 +181,7 @@ def perform_run(file_path, index, id): #uses MUTATIONS instead
     run_file.write(struct.pack('I', 2**31 + current_id + 1))
     run_file.close()
     bin_file.close()
+    
     print(max_dmg)
     print(max_region)
 
@@ -208,7 +211,7 @@ def redistribute(lists, total_items): # redistribute the total damage within a s
 
 def perform_simulations(file_path, runs, start):
     # FOR MUTATIONS sums = pd.read_csv('mutations_by_3mer_aggregated_acc_cor.out', header=None)[0].values
-    sums = pd.read_csv('../../data/mutation_lung_3mer.out', header=None)[0].values # FOR MUTAGENIC
+    sums = pd.read_csv('../../data/mutation_skin_3mer_accessible.out', header=None)[0].values # FOR MUTAGENIC
     
     #perform_run(file_path, sums, 1)
     
@@ -219,17 +222,37 @@ def perform_simulations(file_path, runs, start):
     
     print(f"whole operation took {time.time() - start_time:.2f} seconds")
 
+def simple_decode(file_path):
+    bin_file = open(file_path, 'rb')
+    total_dmg = 0
+    max_dmg = 0    
+
+    while True:
+        data = bin_file.read(4)
+        if len(data) < 4:  # Check if we got a full 4 bytes
+            break
+            
+        source = decompress_3mer(struct.unpack('I', data)[0])
+
+        if source[0] == "NEW":
+            print(total_dmg, max_dmg)
+            total_dmg, max_dmg = 0, 0
+        else:    
+            total_dmg += source[-1]
+            max_dmg = max(max_dmg, source[-1])
+    
+    print(total_dmg, max_dmg)
+    bin_file.close()
+
 
 if __name__ == "__main__":
 
-    # genome = read_fasta("/home/users/bc301/scripts/intervals/accessibility/hg38.fa")
-    # generate_categories(genome=genome, mutations='../../data/raw/lung_mut_C_A.bed', output='../../data/mutation_lung_3mer.out')
+    # genome = read_fasta("../../data/genome/hg19.fa")
+    # generate_categories(genome=genome, mutations='../../data/raw/atac_mutations_transitions_C_only.bed', output='../../data/mutation_skin_3mer_accessible.out')
 
-    perform_simulations('../../data/encodings/lung_mutations_packed.bin', 10, 0)
+    # regions = read_fasta("../../data/raw/atac_150bp_intervals_merged.fa.out")
 
-    # regions = read_fasta("../../data/lung_dhs_peaks.fa.out")
-
-    # pos = [[] for i in range(32)]
+    # pos = [[] for i in range(16)]
     # region_id = 0
 
     # for key in list(regions.keys()):
@@ -238,7 +261,18 @@ if __name__ == "__main__":
     
     # print(region_id)
 
-    # write_compression(pos, '../../data/encodings/lung_mutations_packed.bin')
+    # write_compression(pos, '../../data/encodings/skin_mutations_packed_atac.bin')
 
 
-    print("compression successful")
+    # print("compression successful")
+
+    parser = argparse.ArgumentParser(description="A script that accepts command-line inputs")
+
+    parser.add_argument("id", type=int, help="Starting Run Id")
+    args = parser.parse_args()
+
+    perform_simulations('../../data/encodings/skin_mutations_packed_atac.bin', 100, args.id-1)
+
+    # simple_decode('/usr/xtmp/bc301/sim_data_skin_mut_atac/acc_run_1.bin')
+
+    print("simulation successful")

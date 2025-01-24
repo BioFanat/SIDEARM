@@ -332,6 +332,18 @@ def overlap(damage, intervals):
     if chrom in genome:
         seq = genome[chrom][pos[0]-1:pos[1]+2]
     
+    # if seq:
+    #     core = seq[1:3].upper()  # Get the core dinucleotide
+    #     if dmg_strand == "+" and ("G" in core or "A" in core):
+    #         # This is physically impossible - can't have CPD at G/A on + strand
+    #         print(f"Warning: Invalid CPD site found: {seq} on + strand")
+    #         return []
+    #     if dmg_strand == "-" and ("C" in core or "T" in core):
+    #         # This is physically impossible - can't have CPD at C/T on - strand
+    #         print(f"Warning: Invalid CPD site found: {seq} on - strand")
+    #         return []
+
+    
     code = match_4mer(seq)
     if not seq or len(code) != 3: #or code[1] == '3':
         return []
@@ -624,6 +636,42 @@ def decode_nochrom(site_code):
 
     return (region, pos, strand, dmg)
 
+def convert_id(id):
+    # convert id to base 4
+    id_str = np.base_repr(id, base=4).zfill(3)
+
+    ret = []
+    match id_str[0]:
+        case '0':
+            ret.append('A')
+        case '1':
+            ret.append('C')
+        case '2':
+            ret.append('G')
+        case '3':
+            ret.append('T')
+
+    match id_str[1]:
+        case '0':
+            ret.append('CC')
+        case '1':
+            ret.append('CT')
+        case '2':
+            ret.append('TC')
+        case '3':
+            ret.append('TT')
+
+    match id_str[2]:
+        case '0':
+            ret.append('A')
+        case '1':
+            ret.append('C')
+        case '2':
+            ret.append('G')
+        case '3':
+            ret.append('T')
+    return ''.join(ret)
+
 def process_single_simulation(file_path, intervals, tree, window, seed):
     """
     Combines redistribution and intersection into a single function that returns
@@ -638,7 +686,7 @@ def process_single_simulation(file_path, intervals, tree, window, seed):
     rel_dmg_diff = [0.0] * (2*window + 1)
     
     # Read damage index for redistribution
-    acc_4mer = pd.read_csv('../../data/encodings/dmg_index_acc.out', sep="\t", header=None, names=["dmg_plus", "dmg_minus"])
+    acc_4mer = pd.read_csv('../../data/encodings/atac_nb_dmg_index.out', sep="\t", header=None, names=["dmg_plus", "dmg_minus", "a", "b"])
     acc_4mer['dmg_total'] = acc_4mer['dmg_plus'] + acc_4mer['dmg_minus']
     index = acc_4mer['dmg_total'].values
     
@@ -652,7 +700,7 @@ def process_single_simulation(file_path, intervals, tree, window, seed):
     
     # Add verification counters
     total_redistributed = 0
-    
+
     while data:
         data = bin_file.read(4)
         if not data:
@@ -663,6 +711,7 @@ def process_single_simulation(file_path, intervals, tree, window, seed):
         if source[0] == "NEW":
             # Redistribute damages for current 4mer
             if len(arr) > 0:
+                # np.random.seed(seed * 10000 + current_id)
                 redistributed = redistribute(arr, index[current_id])
                 
                 # Verify redistribution
@@ -671,8 +720,32 @@ def process_single_simulation(file_path, intervals, tree, window, seed):
                 total_redistributed += total_this_4mer
                 
                 # Process redistributed damages
+
+                # print(f"WORKING WITH 4MER {convert_id(current_id)}")
+
                 for damage in redistributed:
                     if damage[3] > 0:  # if there is damage at this position
+                        chrom = damage[0]
+                        pos = (damage[1], damage[2])
+                        dmg_val = damage[3]
+                        dmg_strand = damage[4]
+
+                        seq = None
+                        
+                        if chrom in genome:
+                            seq = genome[chrom][pos[0]-1:pos[1]+2]
+                        
+                        if seq:
+                            core = seq[1:3].upper()  # Get the core dinucleotide
+                            if dmg_strand == "+" and ("G" in core or "A" in core):
+                                # This is physically impossible - can't have CPD at G/A on + strand
+                                print(f"Warning: Invalid CPD site found: {seq} on + strand. Should be {convert_id(current_id)}")
+                                continue
+                            if dmg_strand == "-" and ("C" in core or "T" in core):
+                                # This is physically impossible - can't have CPD at C/T on - strand
+                                print(f"Warning: Invalid CPD site found: {seq} on - strand. Should be {rev_complement(convert_id(current_id))}")
+                                continue
+                    
                         for match in overlap(damage, tree):
                             dist = match[1]
                             if abs(dist) <= window:
@@ -687,6 +760,7 @@ def process_single_simulation(file_path, intervals, tree, window, seed):
                 
             arr = []
             current_id = int(source[1], 4)
+            # print("NEW 4MER", convert_id(current_id))
             
         else:
             arr.append(source)
@@ -707,11 +781,14 @@ def perform_single_simulation(intervals, tree, radius, file_path, run_id):
 # Modified build_runs to use new simulation function
 def build_runs(num_runs, range_map, tf_tree, window):
     total_runs = []
-    func = partial(perform_single_simulation, range_map, tf_tree, window, '../../data/encodings/acc_4mers_original.bin')
+    func = partial(perform_single_simulation, range_map, tf_tree, window, '../../data/encodings/atac_4mers_sorted_nb.bin')
     
-    with Pool() as p:
-        total_runs = p.map(func, range(num_runs))
+    # with Pool() as p:
+    #     total_runs = p.map(func, range(num_runs))  
     
+    for i in range(num_runs):
+        total_runs.append(func(i))
+
     df = pd.DataFrame(total_runs, columns=[i - window + 0.5 for i in range(2*window + 1)] * 2)
     df = df.transpose()
     
@@ -752,39 +829,136 @@ def build_muts(num_runs, range_map, tf_tree, window, mode):
     return df
 
 def add_stats(data, num_runs):
-
     data.reset_index(inplace=True) 
     
     global motif_range
     motif_range = (-(math.ceil(motif_length / 2) - 1), motif_length // 2)
 
-    flanks = data[((data['Pos'] < motif_range[0] - 5) | (data['Pos'] > motif_range[1] + 5))][['Pos', 'Dmg', 'mean']]
-
-    if len(flanks) > 0:
-        factor = flanks['mean'].mean() / flanks['Dmg'].mean()
-        data['Dmg'] = data['Dmg'] * factor
-
+    # Create mask for flanks
+    flank_mask = ((data['Pos'] < motif_range[0] - 5) | (data['Pos'] > motif_range[1] + 5))
+    
+    # Get run columns with correct slice
+    run_cols = slice(3, -4)  # Changed from -3 to -4 to account for all summary statistics
+    
+    if flank_mask.any():
+        # Calculate factor using masked data
+        factor = (data.loc[flank_mask, 'Dmg'].mean() / 
+                 data.loc[flank_mask, 'mean'].mean())
         print(f'Scaling Factor: {factor}')
-    
-    runs = data.copy().iloc[:,3:-3]
-    
-    # Convert runs and exp to numeric type
         
-    exp = pd.Series(data['Dmg'].squeeze())
+        # Modify run columns in place
+        data.iloc[:, run_cols] *= factor
+    
+    # Get runs view after modification
+    runs = data.iloc[:, run_cols]
+    exp = data['Dmg']
         
+    # Calculate p-values
     bool_comparison_top = runs.gt(exp, axis=0)
     bool_comparison_bottom = runs.lt(exp, axis=0)
 
-    count_exceeds = pd.DataFrame(bool_comparison_top.sum(axis=1) / num_runs,columns=['P-Value-Top'])
-    count_less = pd.DataFrame(bool_comparison_bottom.sum(axis=1) / num_runs,columns=['P-Value-Bottom'])
+    # Calculate FDR-corrected p-values
+    data['P-Value-Top'] = smstats.fdrcorrection(
+        bool_comparison_top.sum(axis=1) / num_runs)[1]
+    data['P-Value-Bottom'] = smstats.fdrcorrection(
+        bool_comparison_bottom.sum(axis=1) / num_runs)[1]
+
+    # Recalculate all summary statistics after scaling
+    data['min'] = runs.min(axis=1)
+    data['max'] = runs.max(axis=1)
+    data['median'] = runs.median(axis=1)
+    data['mean'] = runs.mean(axis=1)
+    data['std'] = runs.std(axis=1)
+    data['z'] = (data['Dmg'] - data['mean']) / (data['std'] + 1e-9)
     
-    count_exceeds['P-Value-Top'] = smstats.fdrcorrection(count_exceeds['P-Value-Top'])[1]
-    count_less['P-Value-Bottom'] = smstats.fdrcorrection(count_less['P-Value-Bottom'])[1]
 
-    data['P-Value-Top'] = count_exceeds['P-Value-Top']
-    data['P-Value-Bottom'] = count_less['P-Value-Bottom']
-
-    data[['mean', 'std']] = runs.apply(lambda row: pd.Series({'mean': np.mean(row), 'std': np.std(row)}), axis=1)
+def add_stats_split(data, num_runs):
+    data.reset_index(inplace=True)
+    
+    global motif_range
+    motif_range = (-(math.ceil(motif_length / 2) - 1), motif_length // 2)
+    
+    # Create masks for flanks (used for calculating scaling factors)
+    left_flank_mask = (data['Pos'] < motif_range[0] - 5)
+    right_flank_mask = (data['Pos'] > motif_range[1] + 5)
+    
+    # Create masks for applying scaling (entire left/right halves)
+    left_half_mask = (data['Pos'] < 0)
+    right_half_mask = (data['Pos'] >= 0)
+    
+    # Get run columns
+    run_cols = slice(3, -4)
+    runs = data.iloc[:, run_cols]
+    
+    # Initialize dictionary to store scaling factors
+    scaling_factors = {}
+    
+    # Calculate scaling factors using flank regions for each strand
+    for strand in data['Strand'].unique():
+        strand_mask = (data['Strand'] == strand)
+        
+        # Left flank scaling (calculated from flanks)
+        left_data = data[strand_mask & left_flank_mask]
+        if not left_data.empty:
+            left_factor = (left_data['Dmg'].mean() / 
+                         left_data['mean'].mean())
+            scaling_factors[f'{strand}_left'] = left_factor
+            
+        # Right flank scaling (calculated from flanks)
+        right_data = data[strand_mask & right_flank_mask]
+        if not right_data.empty:
+            right_factor = (right_data['Dmg'].mean() / 
+                          right_data['mean'].mean())
+            scaling_factors[f'{strand}_right'] = right_factor
+    
+    print("Scaling Factors:", scaling_factors)
+    
+    # Apply scaling factors to entire left/right halves
+    for strand in data['Strand'].unique():
+        strand_mask = (data['Strand'] == strand)
+        
+        # Scale entire left half
+        left_scaling_mask = strand_mask & left_half_mask
+        if left_scaling_mask.any():
+            data.loc[left_scaling_mask, data.columns[run_cols]] *= scaling_factors[f'{strand}_left']
+        
+        # Scale entire right half
+        right_scaling_mask = strand_mask & right_half_mask
+        if right_scaling_mask.any():
+            data.loc[right_scaling_mask, data.columns[run_cols]] *= scaling_factors[f'{strand}_right']
+    
+    # Get updated runs view
+    runs = data.iloc[:, run_cols]
+    exp = data['Dmg']
+    
+    # Initialize p-value arrays
+    p_values_top = np.zeros(len(data))
+    p_values_bottom = np.zeros(len(data))
+    
+    # Calculate p-values position by position
+    for i in range(len(data)):
+        observed = exp.iloc[i]
+        simulated = runs.iloc[i].values
+        
+        # If all values are identical (including observed), set p-values to 1
+        if np.allclose(simulated, observed, rtol=1e-10, atol=1e-10):
+            p_values_top[i] = 1.0
+            p_values_bottom[i] = 1.0
+        else:
+            # Calculate empirical p-values only when there's actual variation
+            p_values_top[i] = (simulated > observed).mean()
+            p_values_bottom[i] = (simulated < observed).mean()
+    
+    # Apply FDR correction
+    data['P-Value-Top'] = smstats.fdrcorrection(p_values_top)[1]
+    data['P-Value-Bottom'] = smstats.fdrcorrection(p_values_bottom)[1]
+    
+    # Recalculate all summary statistics after scaling
+    data['min'] = runs.min(axis=1)
+    data['max'] = runs.max(axis=1)
+    data['median'] = runs.median(axis=1)
+    data['mean'] = runs.mean(axis=1)
+    data['std'] = runs.std(axis=1)
     data['z'] = (data['Dmg'] - data['mean']) / (data['std'] + 1e-9)
 
 def add_stats_muts(data, num_runs):
@@ -954,7 +1128,7 @@ def summary_visuals(results_damage, results_mutation, tf_name, window, mode='dam
     generate_logo(results_mutation, plus_tf, minus_tf, tf_name, axs[1])
 
     plt.show()
-    fig.savefig(f'../../output/vis/{mode}_simulation_a_graph_{tf_name}_{window}.png', dpi=600)
+    fig.savefig(f'../../output/atac_naive/{mode}_simulation_a_graph_{tf_name}_{window}_nb.png', dpi=600)
 
 def write_results(tf_name, results, alpha=0.05):
     from pathlib import Path
@@ -975,7 +1149,7 @@ def write_results(tf_name, results, alpha=0.05):
     min_z = relevant['z'].min()
 
     # Write results using context manager
-    output_path = Path('../../output/summary') / f'{tf_name}.out'
+    output_path = Path('../../output/atac_naive') / f'{tf_name}.out'
     with open(output_path, 'w') as out:
         out.write(f'SIGNIFICANCE ANALYSIS FOR {tf_name}\n\n')
         out.write('Min-Top\t\tNum-Top\t\tMin-Bottom\t\tNum-Bottom\t\tLargest Z\t\tSmallest Z\n')
@@ -1019,7 +1193,7 @@ def permutation_statistic(x, y):
     transformed = rs * np.sqrt(dof / ((rs+1.0)*(1.0-rs)))
     return transformed
 
-def analyze(tf_name, num_runs, window=20):
+def analyze(tf_name, num_runs, run_id, window=20):
     global plus_tf
     plus_tf = []
 
@@ -1029,17 +1203,20 @@ def analyze(tf_name, num_runs, window=20):
     #motif_length = 0
 
     #tree = process_intervals(read_tf_file("tf_exp/accessible_ETS1_plus.bed") + read_tf_file("tf_exp/accessible_ETS1_minus.bed"), 300)
-    tree = process_intervals(read_tf_file(f'/home/users/bc301/scripts/intervals/accessibility/processed_clusters/{tf_name}.bed'), window)
+    # tree = process_intervals(read_tf_file(f'/home/users/bc301/scripts/intervals/accessibility/processed_clusters/{tf_name}.bed'), window)
+    tree = process_intervals(read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_plus_high.bed') + read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_minus_high.bed'), window)
     # tree = process_intervals(read_tf_file(f'ETS_1_pyr3.bed'), window) # test wyrick fig. 4
     # intervals = hold_interval_indices('acc_regions/atac_accessibility_sorted.bed')
     # intervals = hold_interval_indices('/usr/xtmp/bc301/hana_data/for_bo/WT_CSB_hg19_idr_conservative_summits_150bp.bed')
 
     # FOR DAMAGE
 
-    intervals = hold_interval_indices('/home/users/bc301/scripts/intervals/accessibility/accessibility_sorted.bed')
+    # intervals = hold_interval_indices('/home/users/bc301/scripts/intervals/accessibility/accessibility_sorted.bed')
+    intervals = hold_interval_indices('../../data/raw/atac_150bp_intervals_merged.bed')
    
     total_runs = build_runs(num_runs, intervals, tree, window)
-    intersection_dmgs = process_dmgs('/home/users/bc301/scripts/intervals/accessibility/accessible_plus.bed', '/home/users/bc301/scripts/intervals/accessibility/accessible_minus.bed', tree, window) #= 
+    # intersection_dmgs = process_dmgs('/home/users/bc301/scripts/intervals/accessibility/accessible_plus.bed', '/home/users/bc301/scripts/intervals/accessibility/accessible_minus.bed', tree, window) #= 
+    intersection_dmgs = process_dmgs('../../data/damages/atac_nb_plus.bed', '../../data/damages/atac_nb_minus.bed', tree, window) #= 
 
     combined_dmg = pd.concat([intersection_dmgs, total_runs], axis=1)
 
@@ -1048,8 +1225,8 @@ def analyze(tf_name, num_runs, window=20):
     # combined_dmg = pd.concat([intersection_dmgs, total_runs], axis=1)
     # # combined_dmg.reset_index(inplace=True)
     # combined_dmg.rename(columns={'index': 'Pos'}, inplace=True)
-    add_stats(combined_dmg, num_runs)
-    combined_dmg.to_csv(f"../../output/raw_data/{tf_name}_{num_runs}_{window}_dmg_raw.csv")
+    add_stats_split(combined_dmg, num_runs)
+    combined_dmg.to_csv(f"../../output/runtime/{tf_name}_{num_runs}_{window}_dmg_raw_{run_id}_nb.csv")
 
     # FOR MUTAGENIC (POTENTIAL DAMAGE)
     # intersection_mutagenic = process_muts('mutations/mutagenic_combined_Conly.bed', tree, window)
@@ -1077,8 +1254,8 @@ def analyze(tf_name, num_runs, window=20):
     # combined_mut = pd.concat([intersection_muts, total_muts], axis=1)
     # add_stats_muts(combined_mut, num_runs)
 
-    write_results(tf_name, combined_dmg)
-    summary_visuals(combined_dmg, None, tf_name, window, mode='damage')
+    # write_results(tf_name, combined_dmg)
+    # summary_visuals(combined_dmg, None, tf_name, window, mode='damage')
 
     # # combined_dmg.to_csv(f"stats/mut/{tf_name}_{num_runs}_{window}_mutagenic_only_sim_a.csv")
     # # combined_mut.to_csv(f"stats/mut/{tf_name}_{num_runs}_{window}_mutation_Conly_sim_a.csv")
@@ -1158,6 +1335,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="A script that accepts command-line inputs")
 
     parser.add_argument("tf_name", type=str, help="TF Name")
+    parser.add_argument("run_id", type=int, help="Number of Runs")
     args = parser.parse_args()
 
     start = time.time()
@@ -1169,6 +1347,6 @@ if __name__ == "__main__":
 
     start = time.time()
 
-    analyze(tf_name=args.tf_name, num_runs=1000)
+    analyze(tf_name=args.tf_name, num_runs=1000, run_id=args.run_id)
 
     print(f"Takes {time.time() - start:.2f} seconds to process {args.tf_name} - Naive Version")

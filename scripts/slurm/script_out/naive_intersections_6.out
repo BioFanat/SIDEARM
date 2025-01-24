@@ -1,3 +1,6 @@
-Takes 57.22 seconds to read hg19
-Scaling Factor: 0.9441103590347262
-Takes 1098.56 seconds to process AP1_1 - Naive Version
+Takes 31.27 seconds to read hg19
+Scaling Factor: 0.9430925544437904
+Takes 8273.03 seconds to process AP1_1 - Preprocessed Version
+Takes 55.61 seconds to read hg19
+Scaling Factor: 0.9429819011183049
+Takes 27372.20 seconds to process AP1_1 - Naive Version

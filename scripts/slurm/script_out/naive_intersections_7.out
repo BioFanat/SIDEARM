@@ -1,3 +1,6 @@
-Takes 32.86 seconds to read hg19
-Scaling Factor: 0.9072036114570362
-Takes 1013.89 seconds to process CCAAT_CEBP - Naive Version
+Takes 36.48 seconds to read hg19
+Scaling Factor: 0.9020853051058533
+Takes 8300.63 seconds to process CCAAT_CEBP - Preprocessed Version
+Takes 57.38 seconds to read hg19
+Scaling Factor: 0.9022378580323785
+Takes 21273.94 seconds to process CCAAT_CEBP - Naive Version

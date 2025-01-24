@@ -1,3 +1,6 @@
-Takes 55.12 seconds to read hg19
-Scaling Factor: 0.8767382748442113
-Takes 985.22 seconds to process SPI - Naive Version
+Takes 56.50 seconds to read hg19
+Scaling Factor: 0.8785457527058051
+Takes 8309.20 seconds to process SPI - Preprocessed Version
+Takes 32.41 seconds to read hg19
+Scaling Factor: 0.8782853394555592
+Takes 26355.00 seconds to process SPI - Naive Version

@@ -1,3 +1,6 @@
-Takes 55.53 seconds to read hg19
-Scaling Factor: 1.1372890891378473
-Takes 1165.76 seconds to process CTCF - Naive Version
+Takes 58.86 seconds to read hg19
+Scaling Factor: 1.1392053904854684
+Takes 8721.13 seconds to process CTCF - Preprocessed Version
+Takes 54.15 seconds to read hg19
+Scaling Factor: 1.1384847377821075
+Takes 29921.64 seconds to process CTCF - Naive Version
