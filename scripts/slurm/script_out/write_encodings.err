@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/home/users/bc301/manuscript/tf-sim-tester/scripts/slurm/../write_encodings.py", line 267, in <module>
-    parser = argparse.ArgumentParser(description="A script that accepts command-line inputs")
-NameError: name 'argparse' is not defined
