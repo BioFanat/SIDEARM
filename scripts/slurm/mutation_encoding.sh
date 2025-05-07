@@ -2,7 +2,7 @@
 #SBATCH --mem=12G
 #SBATCH --output=script_out/write_encodings_%a.out # File to which stdout will be written
 #SBATCH --error=script_out/write_encodings_%a.err
-#SBATCH --array=1-10
+#SBATCH --array=1-1
 
 
 # Note the different syntax for command substitution and variable referencing in csh

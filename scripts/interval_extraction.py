@@ -374,126 +374,126 @@ if __name__ == "__main__":
     
     # write_compressed_damages(sites_plus, "collapsed_naked_plus.bed")
     # write_compressed_damages(sites_minus, "collapsed_naked_minus.bed")
-    hg38 = read_fasta("../../data/genome/hg19.fa")
+    hg19 = read_fasta("../../data/genome/hg19.fa")
 
-    intervals = hold_interval_indices("../../data/raw/atac_150bp_intervals_merged.bed")
+    # intervals = hold_interval_indices("../../data/raw/atac_150bp_intervals_merged.bed")
 
-    regions = read_fasta("../../data/raw/atac_150bp_regions_merged.fa.out") #read_fasta("acc_regions/acc_intervals.fa.out") #read_fasta("acc_regions/acc_intervals_consolidated.fa.out")
-    # # # #print(list(regions.keys()))
+    # regions = read_fasta("../../data/raw/atac_150bp_regions_merged.fa.out") #read_fasta("acc_regions/acc_intervals.fa.out") #read_fasta("acc_regions/acc_intervals_consolidated.fa.out")
+    # # # # #print(list(regions.keys()))
 
-    pos = [[] for i in range(64)]
-    region_id = 0
-    max_region_id = 0
+    # pos = [[] for i in range(64)]
+    # region_id = 0
+    # max_region_id = 0
 
-    # #curr_chrom = ""
-    max_len = 0
-    for key in list(regions.keys()):
-        #new_chrom = key.split(":")[0]
+    # # #curr_chrom = ""
+    # max_len = 0
+    # for key in list(regions.keys()):
+    #     #new_chrom = key.split(":")[0]
 
-        # if new_chrom != curr_chrom:
-        #     curr_chrom = new_chrom
-        #     region_id = 0
+    #     # if new_chrom != curr_chrom:
+    #     #     curr_chrom = new_chrom
+    #     #     region_id = 0
 
-        max_region_id = max(region_id, max_region_id)
-        max_len = max(max_len, len(regions[key]))
-        pos = sliding_window(key, regions[key], pos, region_id, intervals, hg38)
-        region_id += 1
+    #     max_region_id = max(region_id, max_region_id)
+    #     max_len = max(max_len, len(regions[key]))
+    #     pos = sliding_window(key, regions[key], pos, region_id, intervals, hg38)
+    #     region_id += 1
     
-    print(max_region_id)
-    print(max_len)
+    # print(max_region_id)
+    # print(max_len)
 
-    bin_file = open("../../data/encodings/atac_4mers_ultracompact.bin", "wb")
-    index_id = 0
-    bytes_written = 0  # Track total bytes written
-    site_by_index = [[0,0] for i in range(64)]
-        
-    for index in pos:
-        # Write marker
-        bin_file.write(struct.pack('I', 2**31 + index_id))
-        bytes_written += 4
-        
-        
-        # Write sites
-        for site in index:
-            site_chrom, site_position = site[0], site[1]
-            if site[3] > 0:
-                packed = pack_tuple_nochrom(site)  
-                test_seq, test_chrom, test_pos = decode_to_seq(packed, intervals, hg38)
-
-
-                # if site_chrom != test_chrom or site_position != test_pos:
-                #     print(f"MISMATCH: {site_chrom} != {test_chrom} or {site_position} != {test_pos}")
-
-                #add sites based on strand
-
-                if site[2] == '+':
-                    site_by_index[index_id][0] += 1
-                    if test_seq.upper() != convert_id(index_id):
-                        print(f'Invalid CPD match: {test_seq} != {convert_id(index_id)}')
-                else:
-                    site_by_index[index_id][1] += 1
-                    if test_seq.upper() != rev_complement(convert_id(index_id)):
-                        print(f'Invalid CPD match: {test_seq} != {rev_complement(convert_id(index_id))}')
-
-                bin_file.write(struct.pack('I', packed))
-                bytes_written += 4
-        
-        index_id += 1
-    
-    # Write final marker
-    bin_file.write(struct.pack('I', 2**31 + index_id))
-    bytes_written += 4
-
-    bin_file.close()
-
-    print("compression successful")
-
-    # dmg_index = [[0,0] for i in range(16)]
-
-    # with open('../../data/damages/a549_bpde_1_2_plus.bed') as f:
-    #     for line in f:
-    #         arr = line.split("\t")
-    #         chrom = arr[0]
-    #         start = int(arr[1])
-    #         end = int(arr[2])
-    #         dmg = int(arr[4])
-
-    #         if is_valid_chrom(chrom):
-    #             seq = hg38[chrom][start-1:end+1]
-
-    #             if len(seq) != 4:
-    #                 print(line)
-
-    #             dmg_index = map_collapsed_bpde(chrom, seq, dmg, dmg_index)
-    
-    # with open('../../data/damages/a549_bpde_1_2_minus.bed') as f:
-    #     for line in f:
-    #         arr = line.split("\t")
-    #         chrom = arr[0]
-    #         start = int(arr[1])
-    #         end = int(arr[2])
-    #         dmg = int(arr[4])
-            
-    #         if is_valid_chrom(chrom):
-    #             seq = hg38[chrom][start-1:end+1]
-
-    #             if len(seq) != 3:
-    #                 print(line)
-
-    #             dmg_index = map_collapsed_bpde(chrom, seq, dmg, dmg_index)
-    
-    # file = open("../../data/encodings/a549_dmg_index.out", "w")
-
+    # bin_file = open("../../data/encodings/atac_4mers_ultracompact.bin", "wb")
     # index_id = 0
+    # bytes_written = 0  # Track total bytes written
+    # site_by_index = [[0,0] for i in range(64)]
+        
+    # for index in pos:
+    #     # Write marker
+    #     bin_file.write(struct.pack('I', 2**31 + index_id))
+    #     bytes_written += 4
+        
+        
+    #     # Write sites
+    #     for site in index:
+    #         site_chrom, site_position = site[0], site[1]
+    #         if site[3] > 0:
 
-    # for ind in dmg_index:
-    #     ind = [str(el) for el in ind]
-    #     site_by_index[index_id] = [str(el) for el in site_by_index[index_id]]
-    #     file.write("\t".join(ind) + "\t" + "\t".join(site_by_index[index_id]) + "\n")
+    #             packed = pack_tuple_nochrom(site)  
+    #             test_seq, test_chrom, test_pos = decode_to_seq(packed, intervals, hg38)
+
+
+    #             # if site_chrom != test_chrom or site_position != test_pos:
+    #             #     print(f"MISMATCH: {site_chrom} != {test_chrom} or {site_position} != {test_pos}")
+
+    #             #add sites based on strand
+
+    #             if site[2] == '+':
+    #                 site_by_index[index_id][0] += 1
+    #                 if test_seq.upper() != convert_id(index_id):
+    #                     print(f'Invalid CPD match: {test_seq} != {convert_id(index_id)}')
+    #             else:
+    #                 site_by_index[index_id][1] += 1
+    #                 if test_seq.upper() != rev_complement(convert_id(index_id)):
+    #                     print(f'Invalid CPD match: {test_seq} != {rev_complement(convert_id(index_id))}')
+
+    #             bin_file.write(struct.pack('I', packed))
+    #             bytes_written += 4
+        
     #     index_id += 1
     
-    # file.close()
+    # # Write final marker
+    # bin_file.write(struct.pack('I', 2**31 + index_id))
+    # bytes_written += 4
+
+    # bin_file.close()
+
     # print("compression successful")
+
+    dmg_index = [[0,0] for i in range(64)]
+
+    with open('../../data/damages/atac_naked_plus.bed') as f:
+        for line in f:
+            arr = line.split("\t")
+            chrom = arr[0]
+            start = int(arr[1])
+            end = int(arr[2])
+            dmg = int(arr[3])
+
+            if is_valid_chrom(chrom):
+                seq = hg19[chrom][start-1:end+2]
+
+                if len(seq) != 4:
+                    print(line)
+
+                dmg_index = map_collapsed_cpd(chrom, seq, dmg, dmg_index)
+    
+    with open('../../data/damages/atac_naked_minus.bed') as f:
+        for line in f:
+            arr = line.split("\t")
+            chrom = arr[0]
+            start = int(arr[1])
+            end = int(arr[2])
+            dmg = int(arr[3])
+            
+            if is_valid_chrom(chrom):
+                seq = hg19[chrom][start-1:end+2]
+
+                if len(seq) != 4:
+                    print(line)
+
+                dmg_index = map_collapsed_cpd(chrom, seq, dmg, dmg_index)
+    
+    file = open("../../data/encodings/atac_naked_dmg_index.out", "w")
+
+    index_id = 0
+
+    for ind in dmg_index:
+        ind = [str(el) for el in ind]
+        file.write("\t".join(ind) + "\n")
+        index_id += 1
+    
+    file.close()
+    print("compression successful")
 
 
 

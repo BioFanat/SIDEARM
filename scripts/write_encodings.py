@@ -23,6 +23,77 @@ def match_C_3mer(seq):
     except KeyError:
         return 32
 
+def match_cpd_4mer(seq): #create a numerical representation for each 4mer that can be easily interpreted
+
+    seq = seq.upper()
+
+    if len(seq) != 4:
+        print("broken")
+        return 64, "."
+
+    if 'T' in seq[1:3] or 'C' in seq[1:3]:
+        strand = "+"
+    
+    else:
+        strand = "-"
+        seq = rev_complement(seq)
+
+    f1 = seq[0]
+    dimer = seq[1:3]
+    f2 = seq[3]
+
+    tri = ""
+
+    match f1:
+        case "A":
+            tri += "0"
+        
+        case "C":
+            tri += "1"
+
+        case "G":
+            tri += "2"
+        
+        case "T":
+            tri += "3"
+        
+        case _:
+            tri += "1000"
+
+    match dimer:
+        case "CC":
+            tri += "0"
+        
+        case "CT":
+            tri += "1"
+
+        case "TC":
+            tri += "2"
+        
+        case "TT":
+            tri += "3"
+
+        case _:
+            tri += "1000"
+    
+    match f2:
+        case "A":
+            tri += "0"
+        
+        case "C":
+            tri += "1"
+
+        case "G":
+            tri += "2"
+        
+        case "T":
+            tri += "3"
+        
+        case _:
+            tri += "1000"
+    
+    return tri
+
 def sliding_window(key, seq, categories, region_id, mode):
 
     match mode:
@@ -31,7 +102,7 @@ def sliding_window(key, seq, categories, region_id, mode):
             match_func = match_C_3mer
         case 'CPD_mut':
             length = 4
-            match_func = match_CPD_4mer
+            match_func = match_cpd_4mer
 
     if len(seq) < length:
         return categories
@@ -244,11 +315,67 @@ def simple_decode(file_path):
     print(total_dmg, max_dmg)
     bin_file.close()
 
+def gen_mutagenic(genome, plus_dmg, minus_dmg, output_file):
+    out = open(output_file, 'w')
+    desired = ['C', 'G']
+    with open(plus_dmg) as f:
+        for line in f:
+            new_dmg = line.strip().split("\t")
+            new_dmg[1], new_dmg[2], new_dmg[3] = int(new_dmg[1]), int(new_dmg[2]), int(new_dmg[3])
+            seq = None
+            if new_dmg[0] in genome:
+                seq = genome[new_dmg[0]][new_dmg[1]-1:new_dmg[2]+2]
+            
+            if seq and len(match_cpd_4mer(seq)) == 3:
+                print(seq, end="")
+                print('\t', end='')
+                
+                if seq[1].upper() in desired:
+                    print('1',end='')
+                    out.write(f'{new_dmg[0]}\t{new_dmg[1]}\t{new_dmg[1]}\t{new_dmg[3]}\n')
+                print('\t', end='')
+                if seq[2].upper() in desired:
+                    print(f'1',end='')
+                    out.write(f'{new_dmg[0]}\t{new_dmg[2]}\t{new_dmg[2]}\t{new_dmg[3]}\n')
+                
+                print("")
+            
+            elif len(match_cpd_4mer(seq)) != 3:
+                print(new_dmg, seq)
+    
+    with open(minus_dmg) as f:
+        for line in f:
+            new_dmg = line.strip().split("\t")
+            new_dmg[1], new_dmg[2], new_dmg[3] = int(new_dmg[1]), int(new_dmg[2]), int(new_dmg[3])
+            seq = None
+            if new_dmg[0] in genome:
+                seq = genome[new_dmg[0]][new_dmg[1]-1:new_dmg[2]+2]
+            
+            # if seq and len(match_4mer(seq)) == 3 and match_4mer(seq)[1] == '3':
+            #     out.write(f'{new_dmg[0]}\t{new_dmg[1]}\t{new_dmg[1]}\t{new_dmg[3]}\n')
+            #     out.write(f'{new_dmg[0]}\t{new_dmg[2]}\t{new_dmg[2]}\t{new_dmg[3]}\n')
+            if seq and len(match_cpd_4mer(seq)) == 3:
+                print(seq, end="")
+                print('\t', end='')
+                
+                if seq[1].upper() in desired:
+                    print('1',end='')
+                    out.write(f'{new_dmg[0]}\t{new_dmg[1]}\t{new_dmg[1]}\t{new_dmg[3]}\n')
+                print('\t', end='')
+                if seq[2].upper() in desired:
+                    print(f'1',end='')
+                    out.write(f'{new_dmg[0]}\t{new_dmg[2]}\t{new_dmg[2]}\t{new_dmg[3]}\n')
+                
+                print("")
+            
+            elif len(match_cpd_4mer(seq)) != 3:
+                print(new_dmg, seq)
+
 
 if __name__ == "__main__":
 
-    # genome = read_fasta("../../data/genome/hg19.fa")
-    # generate_categories(genome=genome, mutations='../../data/raw/atac_mutations_transitions_C_only.bed', output='../../data/mutation_skin_3mer_accessible.out')
+    genome = read_fasta("../../data/genome/hg19.fa")
+    generate_categories(genome=genome, mutations='../../data/damages/atac_nb_mutagenic.bed', output='../../data/mutagenic_skin_3mer_accessible.out')
 
     # regions = read_fasta("../../data/raw/atac_150bp_intervals_merged.fa.out")
 
@@ -271,7 +398,9 @@ if __name__ == "__main__":
     parser.add_argument("id", type=int, help="Starting Run Id")
     args = parser.parse_args()
 
-    perform_simulations('../../data/encodings/skin_mutations_packed_atac.bin', 100, args.id-1)
+    # gen_mutagenic(genome, "../../data/damages/atac_nb_plus.bed", "../../data/damages/atac_nb_minus.bed", "../../data/damages/atac_nb_mutagenic.bed")
+
+    # perform_simulations('../../data/encodings/skin_mutations_packed_atac.bin', 100, args.id-1)
 
     # simple_decode('/usr/xtmp/bc301/sim_data_skin_mut_atac/acc_run_1.bin')
 

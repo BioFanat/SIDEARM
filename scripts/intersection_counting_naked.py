@@ -631,11 +631,11 @@ def process_mut_run(file_path, intervals, tree, window):
     return rel_mut
 
 def perform_run(intervals, tree, radius, file_path_id):
-    file_path = f'/usr/xtmp/bc301/sim_uv_cpd_full/acc_run_full_{file_path_id}.bin'
+    file_path = f'/usr/project/oldxtmp/bc301/sim_uv_cpd_full/acc_run_full_{file_path_id}.bin'
     return process_run(file_path, intervals, tree, radius)
 
 def perform_naked_run(intervals, tree, radius, file_path_id):
-    file_path = f'/usr/xtmp/bc301/sim_uv_cpd_naked/acc_run_full_{file_path_id}.bin'
+    file_path = f'/usr/project/oldxtmp/bc301/sim_uv_cpd_naked/acc_run_full_{file_path_id}.bin'
     return process_run(file_path, intervals, tree, radius)
 
 def build_runs(num_runs, range_map, tf_tree, window, mode):
@@ -678,7 +678,7 @@ def perform_mut(intervals, tree, radius, mode, file_path_id):
     mem = process.memory_info().rss / (1024 * 1024)
     print(f"Process memory: {mem:.2f} MB")
 
-    paths = {'actual': f'/usr/xtmp/bc301/sim_data_skin_mut_atac/acc_run_{file_path_id}.bin', 'potential': f'/usr/xtmp/bc301/sim_data_potential_mut/acc_run_{file_path_id}.bin'}
+    paths = {'actual': f'/usr/xtmp/bc301/sim_uv_mut/mut_run_full_{file_path_id}.bin', 'potential': f'/usr/xtmp/bc301/sim_uv_mutagenic/mut_run_full_{file_path_id}.bin'}
     # file_path = f'/usr/xtmp/bc301/sim_data_mut_cor/acc_run_{file_path_id}.bin'
     # file_path = f'/usr/xtmp/bc301/sim_data_potential_mut/acc_run_{file_path_id}.bin'
 
@@ -746,7 +746,7 @@ def add_stats(data, num_runs):
     data['std'] = runs.std(axis=1)
     data['z'] = (data['Dmg'] - data['mean']) / (data['std'] + 1e-9)
 
-def add_stats_split(data, num_runs):
+def add_stats_split(data, num_runs, output_csv):
     data.reset_index(inplace=True)
     
     global motif_range
@@ -835,6 +835,39 @@ def add_stats_split(data, num_runs):
     data['std'] = runs.std(axis=1)
     data['z'] = (data['Dmg'] - data['mean']) / (data['std'] + 1e-9)
 
+    output_rows = []
+
+    for strand in data['Strand'].unique():
+        strand_mask = (data['Strand'] == strand)
+        strand_data = data[strand_mask]
+        
+        for idx, row in strand_data.iterrows():
+            output_row = {
+                'strand': strand,
+                'pos': row['Pos'],
+                'count': row['Dmg'],  # Using Dmg as count
+                'pred_mean_scaled': row['mean'],
+                'std_dev_scal': row['std'],
+                'max_scaled': row['max'],
+                'min_scaled': row['min'],
+                'pval_top': p_values_top[idx],  # Using top p-value
+                'pval_bottom': p_values_bottom[idx],  # Using FDR-corrected p-value
+                'qval_top': row['P-Value-Top'],
+                'qval_bottom': row['P-Value-Bottom'],
+                'zscore_scal': row['z'],
+                'scal_factor_l': scaling_factors.get(f'{strand}_left', 1.0),
+                'scal_factor_r': scaling_factors.get(f'{strand}_right', 1.0)
+            }
+            output_rows.append(output_row)
+    
+    # Create DataFrame and sort by strand and position
+    output_df = pd.DataFrame(output_rows)
+    output_df = output_df.sort_values(['strand', 'pos'])
+    
+    # Write to CSV
+    write_header = not os.path.exists(output_csv)
+    # output_df.to_csv(output_csv, mode='a', header=write_header, index=False)
+
 
 def add_stats_muts(data, num_runs):
     data.reset_index(inplace=True) 
@@ -878,7 +911,7 @@ def add_stats_muts(data, num_runs):
     data['std'] = runs.std(axis=1)
     data['z'] = (data['Mut'] - data['mean']) / (data['std'] + 1e-9)
 
-def add_stats_mut_split(data, num_runs):
+def add_stats_mut_split(data, num_runs, output_csv):
     data.reset_index(inplace=True)
     
     global motif_range
@@ -952,6 +985,11 @@ def add_stats_mut_split(data, num_runs):
     data['P-Value-Top'] = smstats.fdrcorrection(p_values_top)[1]
     data['P-Value-Bottom'] = smstats.fdrcorrection(p_values_bottom)[1]
     
+    
+    data['sig_enrich'] = (data['P-Value-Top'] < 0.05)
+    data['sig_deplete'] = (data['P-Value-Bottom'] < 0.05)
+    
+
     # Recalculate all summary statistics after scaling
     data['min'] = runs.min(axis=1)
     data['max'] = runs.max(axis=1)
@@ -959,8 +997,36 @@ def add_stats_mut_split(data, num_runs):
     data['mean'] = runs.mean(axis=1)
     data['std'] = runs.std(axis=1)
     data['z'] = (data['Mut'] - data['mean']) / (data['std'] + 1e-9)
+
+    output_rows = []
+        
+    for idx, row in data.iterrows():
+        output_row = {
+            'pos': row['Pos'],
+            'count': row['Mut'],  # Using Dmg as count
+            'pred_mean_scaled': row['mean'],
+            'std_dev_scal': row['std'],
+            'max_scaled': row['max'],
+            'min_scaled': row['min'],
+            'pval_top': p_values_top[idx],  # Using top p-value
+            'pval_bottom': p_values_bottom[idx],  # Using FDR-corrected p-value
+            'qval_top': row['P-Value-Top'],
+            'qval_bottom': row['P-Value-Bottom'],
+            'zscore_scal': row['z'],
+            'scal_factor_l': scaling_factors.get(f'left', 1.0),
+            'scal_factor_r': scaling_factors.get(f'right', 1.0)
+        }
+        output_rows.append(output_row)
     
-    return scaling_factors
+    # Create DataFrame and sort by strand and position
+    output_df = pd.DataFrame(output_rows)
+    output_df = output_df.sort_values(['pos'])
+    
+    # Write to CSV
+    write_header = not os.path.exists(output_csv)
+    # output_df.to_csv(output_csv, mode='a', header=write_header, index=False)
+    
+    # return scaling_factors
 
 def scale_mut_mutagenic(data, proj_col, act_col):
 
@@ -1165,6 +1231,7 @@ def plot_data_with_stats_adaptive(data, data_cols, tf_name, window, ax, title_pr
 
     # Rest of the formatting code remains the same
     ax.set_xlim(-15.5, 15.5)
+    
     max_y = (high // 500 + 1) * 500
     ax.set_ylim(-250, max_y)
     
@@ -1271,7 +1338,7 @@ def plot_pvalue_zscore_logo(data, tf_name, plus_counts, minus_counts, window):
     plt.show()
     fig.savefig(f'../../output/uv_rescaled_mut/pvalue_zscore_logo_{tf_name}_{window}.png', dpi=600)
 
-def plot_stacked_analysis(data, data_cols, tf_name, window, plus_counts, minus_counts, mode='damage', title_prefix="", save_path="../../output/"):
+def plot_stacked_analysis(data, data_cols, tf_name, window, plus_counts, minus_counts, mode='damage', title_prefix="", save_path="../../output/", level='both'):
     """Generate a stacked figure with damage/mutation data, p-values, z-scores, and sequence logo"""
     plt.rcParams['font.size'] = 42  # Base font size
     
@@ -1424,24 +1491,468 @@ def plot_stacked_analysis(data, data_cols, tf_name, window, plus_counts, minus_c
         for x in np.arange(-15, 15, 1):
             ax.axvline(x, linestyle='dashed', color='grey', linewidth=0.5)
         
-        ax.legend(loc='upper right', fontsize=32)
+        ax.legend(loc='upper right', fontsize=36)
 
     plt.tight_layout()
     plt.show()
-    fig.savefig(f'{save_path}/{mode}_complete_analysis_{tf_name}_{window}.png', dpi=600, bbox_inches='tight')
+    fig.savefig(f'{save_path}/{mode}_complete_analysis_{tf_name}_{window}_{level}.png', dpi=600, bbox_inches='tight')
 
-def summary_visuals(results_damage, results_mutation, tf_name, window, mode='damage'):
+def plot_stacked_comparisons(results_damage, results_mutation, tf_name, window,
+                             plus_counts, minus_counts, motif_length, # Added motif_length
+                             save_path="../../output/", level='both'):
+    """
+    Generate a stacked figure comparing actual mutations, projected mutations,
+    and the sequence logo.
+    """
+    plt.rcParams['font.size'] = 42  # Base font size
+
+    # Process TF name to replace _number with cnumber
+    if '_' in tf_name and tf_name.split('_')[-1].isdigit():
+        base_name = '_'.join(tf_name.split('_')[:-1])
+        number = tf_name.split('_')[-1]
+        tf_name = f"{base_name}c{number}"
+
+    # Create figure with 3 rows, narrower width, and adjusted height ratios
+    fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(20, 25), # Narrower width (20 vs 30)
+                           gridspec_kw={'height_ratios': [8, 8, 3]}, # Adjusted ratios for 3 panels
+                           layout='constrained')
+
+    # Define colors
+    strand_colors = {'Same': '#1f77b4', 'Diff': '#ff7f0e'}
+    single_color = '#1f77b4'
+    single_color_dmg = '#ff7f0e'
+
+    # --- Plot 1: Actual Mutations (from results_mutation) ---
+    high_mutation = 0
+    data_mut = results_mutation # Use mutation data
+    col_mut = 'Mut' # Assume column name is 'Mut'
+
+    if 'Strand' in data_mut.columns:
+        for strand, group in data_mut.groupby('Strand'):
+            label = "Opposite Strand" if strand == 'Diff' else 'Motif Strand'
+            color = strand_colors[strand]
+            axs[0].plot(group['Pos'], group[col_mut], label=label, color=color)
+
+            # Larger markers for significance
+            for idx, row in group.iterrows():
+                marker = 'o'
+                markersize = 20 # Increased base size
+                if 'sig_enrich' in row and row['sig_enrich']: # Check if column exists
+                    marker = '^'
+                    markersize = 20
+                elif 'sig_deplete' in row and row['sig_deplete']: # Check if column exists
+                    marker = 'v'
+                    markersize = 20
+                axs[0].scatter(row['Pos'], row[col_mut], marker=marker, s=markersize**2,
+                             color=color, label=None if marker != 'o' else '') # Avoid duplicate labels
+
+            if 'median' in group:
+                axs[0].plot(group['Pos'], group['median'], linestyle='dashed',
+                          alpha=0.5, color=color)
+            if 'min' in group and 'max' in group:
+                axs[0].fill_between(group['Pos'], group['min'], group['max'],
+                                  alpha=0.5, color=color, linestyle='dashed')
+                high_mutation = max(high_mutation, group['max'].max()) if not group['max'].empty else high_mutation
+            high_mutation = max(high_mutation, group[col_mut].max()) if not group[col_mut].empty else high_mutation
+    else:
+        # Unstranded case
+        axs[0].plot(data_mut['Pos'], data_mut[col_mut], label="Actual Mutations", color=single_color)
+        for idx, row in data_mut.iterrows():
+            marker = 'o'
+            markersize = 20
+            if 'sig_enrich' in row and row['sig_enrich']:
+                marker = '^'
+                markersize = 20
+            elif 'sig_deplete' in row and row['sig_deplete']:
+                marker = 'v'
+                markersize = 20
+            axs[0].scatter(row['Pos'], row[col_mut], marker=marker, s=markersize**2,
+                         color=single_color, label=None if marker != 'o' else '')
+
+        if 'median' in data_mut:
+            axs[0].plot(data_mut['Pos'], data_mut['median'], linestyle='dashed',
+                       alpha=0.5, color=single_color)
+        if 'min' in data_mut and 'max' in data_mut:
+            axs[0].fill_between(data_mut['Pos'], data_mut['min'], data_mut['max'],
+                              alpha=0.5, color=single_color, linestyle='dashed')
+            high_mutation = max(high_mutation, data_mut['max'].max()) if not data_mut['max'].empty else high_mutation
+        high_mutation = max(high_mutation, data_mut[col_mut].max()) if not data_mut[col_mut].empty else high_mutation
+
+    # --- Plot 2: Projected Mutations (from results_damage) ---
+    high_damage = 0
+    data_dmg = results_damage # Use damage data
+    col_dmg = 'Mut' # Assume column name is 'Dmg'
+
+    if 'Strand' in data_dmg.columns:
+        for strand, group in data_dmg.groupby('Strand'):
+            label = "Opposite Strand" if strand == 'Diff' else 'Motif Strand'
+            color = strand_colors[strand]
+            axs[1].plot(group['Pos'], group[col_dmg], label=label, color=color)
+
+            # Larger markers for significance (optional for damage, depends on if calculated)
+            for idx, row in group.iterrows():
+                marker = 'o'
+                markersize = 20 # Increased base size
+                if 'sig_enrich' in row and row['sig_enrich']:
+                    marker = '^'
+                    markersize = 20
+                elif 'sig_deplete' in row and row['sig_deplete']:
+                    marker = 'v'
+                    markersize = 20
+                axs[1].scatter(row['Pos'], row[col_dmg], marker=marker, s=markersize**2,
+                             color=color, label=None if marker != 'o' else '')
+
+            if 'median' in group:
+                axs[1].plot(group['Pos'], group['median'], linestyle='dashed',
+                          alpha=0.5, color=color)
+            if 'min' in group and 'max' in group:
+                axs[1].fill_between(group['Pos'], group['min'], group['max'],
+                                  alpha=0.5, color=color, linestyle='dashed')
+                high_damage = max(high_damage, group['max'].max()) if not group['max'].empty else high_damage
+            high_damage = max(high_damage, group[col_dmg].max()) if not group[col_dmg].empty else high_damage
+    else:
+        # Unstranded case
+        axs[1].plot(data_dmg['Pos'], data_dmg[col_dmg], label="Projected Mutations", color=single_color_dmg)
+        for idx, row in data_dmg.iterrows():
+            marker = 'o'
+            markersize = 20
+            if 'sig_enrich' in row and row['sig_enrich']:
+                marker = '^'
+                markersize = 20
+            elif 'sig_deplete' in row and row['sig_deplete']:
+                marker = 'v'
+                markersize = 20
+            axs[1].scatter(row['Pos'], row[col_dmg], marker=marker, s=markersize**2,
+                         color=single_color_dmg, label=None if marker != 'o' else '')
+
+        if 'median' in data_dmg:
+            axs[1].plot(data_dmg['Pos'], data_dmg['median'], linestyle='dashed',
+                       alpha=0.5, color=single_color_dmg)
+        if 'min' in data_dmg and 'max' in data_dmg:
+            axs[1].fill_between(data_dmg['Pos'], data_dmg['min'], data_dmg['max'],
+                              alpha=0.5, color=single_color_dmg, linestyle='dashed')
+            high_damage = max(high_damage, data_dmg['max'].max()) if not data_dmg['max'].empty else high_damage
+        high_damage = max(high_damage, data_dmg[col_dmg].max()) if not data_dmg[col_dmg].empty else high_damage
+
+
+    # --- Plot 3: Sequence logo ---
+    # Pass the correct data source for the logo (assuming it's consistent)
+    # Using results_mutation here, adjust if needed, e.g., if counts cover both
+    generate_logo(results_mutation, plus_counts, minus_counts, tf_name, axs[2])
+
+
+    # --- Set titles and labels ---
+    # Panel 0 (Actual Mutations)
+    max_y_mut = (high_mutation // 500 + 1) * 500 if high_mutation > 0 else 500 # Avoid division by zero
+    axs[0].set_ylim(max(-250, -0.1 * max_y_mut) , max_y_mut) # Adjust lower limit slightly
+    axs[0].set_ylabel("Actual Mut Count")
+    axs[0].set_title(f"Mutation vs Projected Profile Comparison for {tf_name}") # Main title on top plot
+
+    # Panel 1 (Projected Mutations)
+    max_y_dmg = (high_damage // 500 + 1) * 500 if high_damage > 0 else 500
+    axs[1].set_ylim(max(-250, -0.1 * max_y_dmg), max_y_dmg)
+    axs[1].set_ylabel("Projected Mut Count")
+
+    # Panel 2 (Logo)
+    axs[2].set_xlabel("Position")
+    axs[2].set_ylabel("") # Remove the empirical binding motif label
+
+
+    # --- Shared formatting for all subplots ---
+    # Calculate motif range using the provided motif_length
+    motif_range = (-(math.ceil(motif_length / 2) - 1), motif_length // 2)
+
+    for i, ax in enumerate(axs):
+        ax.set_xlim(-15.5, 15.5)
+        ax.grid(True, linestyle='--', alpha=0.3)
+
+        if i == 2:  # Logo plot (now the last subplot, index 2)
+            # Add motif region shading and boundary lines with offset for logo only
+            ax.axvspan(motif_range[0] - 0.5, motif_range[1] + 0.5, alpha=0.35, color='grey')
+            ax.axvline(motif_range[0] - 0.5, linestyle='solid', color='#2b2b2b', linewidth=1)
+            ax.axvline(motif_range[1] + 0.5, linestyle='solid', color='#2b2b2b', linewidth=1)
+        else:
+            # Regular motif region shading and boundary lines for other plots
+            ax.axvspan(motif_range[0], motif_range[1], alpha=0.35, color='grey')
+            ax.axvline(motif_range[0], linestyle='solid', color='#2b2b2b', linewidth=1)
+            ax.axvline(motif_range[1], linestyle='solid', color='#2b2b2b', linewidth=1)
+
+        ax.axvline(0, linestyle='dashed', color='#2b2b2b', linewidth=1)
+
+        for x in np.arange(-15, 16, 1): # Ensure range includes 15
+             ax.axvline(x, linestyle='dashed', color='grey', linewidth=0.5)
+
+        # Adjust legend handling - only add if labels were generated
+        handles, labels = ax.get_legend_handles_labels()
+        if handles: # Check if there are any labels to show
+             ax.legend(loc='upper right', fontsize=40) # Keep large legend size
+
+
+    plt.tight_layout(rect=[0, 0, 1, 0.98]) # Adjust layout slightly if title overlaps
+    plt.show()
+    # Use a distinct filename for comparison plots
+    fig.savefig(f'{save_path}/comparison_analysis_{tf_name}_{window}_{level}.png', dpi=600, bbox_inches='tight')
+
+def plot_moods_comparisons(results_damage, results_mutation, tf_name, window,
+                             plus_counts, minus_counts, motif_length,
+                             save_path="../../output/", level='both'):
+    """
+    Generate a stacked figure comparing actual mutations, projected mutations,
+    and the sequence logo, with distinct color schemes for the top two plots.
+
+    Args:
+        results_damage (pd.DataFrame): DataFrame containing projected mutation data.
+                                       Expected columns: 'Pos', 'Mut', optionally 'Strand',
+                                       'median', 'min', 'max', 'sig_enrich', 'sig_deplete'.
+        results_mutation (pd.DataFrame): DataFrame containing actual mutation data.
+                                         Expected columns like results_damage.
+        tf_name (str): Name of the transcription factor.
+        window (int): Window size used in analysis (for filename).
+        plus_counts (pd.DataFrame): Data for sequence logo generation (plus strand).
+        minus_counts (pd.DataFrame): Data for sequence logo generation (minus strand).
+        motif_length (int): Length of the core binding motif.
+        save_path (str, optional): Path to save the output figure. Defaults to "../../output/".
+        level (str, optional): Level of analysis (for filename). Defaults to 'both'.
+    """
+    plt.rcParams['font.size'] = 42  # Base font size
+
+    # Process TF name to replace _number with cnumber
+    if '_' in tf_name and tf_name.split('_')[-1].isdigit():
+        base_name = '_'.join(tf_name.split('_')[:-1])
+        number = tf_name.split('_')[-1]
+        tf_name_processed = f"{base_name}c{number}"
+    else:
+        tf_name_processed = tf_name # Use original name if no trailing number
+
+    # Create figure with 3 rows, narrower width, and adjusted height ratios
+    fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(18, 20), # Narrower width
+                           gridspec_kw={'height_ratios': [10, 10]}, # Adjusted ratios
+                           layout='constrained')
+
+    # --- Define Colors ---
+    # Plot 1 Colors (Actual Mutations - Original Blue/Orange)
+    strand_colors_mut = {'Same': '#1f77b4', 'Diff': '#ff7f0e'}
+    single_color_mut = '#1f77b4'
+
+    # Plot 2 Colors (Projected Mutations - Mint/Red)
+    strand_colors_dmg = {'Same': '#66CDAA', 'Diff': '#9966CC'} # Mint vs Red
+    single_color_dmg = '#66CDAA' # Use Mint for unstranded projected
+
+    # --- Plot 1: Actual Mutations (from results_mutation) ---
+    high_mutation = 0
+    data_mut = results_mutation # Use mutation data
+    col_mut = 'Dmg' # Assume column name is 'Mut'
+
+    if 'Strand' in data_mut.columns:
+        for strand, group in data_mut.groupby('Strand'):
+            label = "Opposite Strand" if strand == 'Diff' else 'Motif Strand'
+            color = strand_colors_mut[strand] # Use MUTATION colors
+            axs[0].plot(group['Pos'], group[col_mut], label=label, color=color)
+
+            # Larger markers for significance
+            for idx, row in group.iterrows():
+                marker = 'o'
+                markersize = 20 # Increased base size
+                if 'sig_enrich' in row and row['sig_enrich']: # Check if column exists
+                    marker = '^'
+                    markersize = 20
+                elif 'sig_deplete' in row and row['sig_deplete']: # Check if column exists
+                    marker = 'v'
+                    markersize = 20
+                axs[0].scatter(row['Pos'], row[col_mut], marker=marker, s=markersize**2,
+                             color=color, label=None if marker != 'o' else '') # Avoid duplicate labels
+
+            if 'median' in group and not group['median'].isnull().all():
+                axs[0].plot(group['Pos'], group['median'], linestyle='dashed',
+                          alpha=0.5, color=color)
+            if 'min' in group and 'max' in group and not group['min'].isnull().all() and not group['max'].isnull().all():
+                axs[0].fill_between(group['Pos'], group['min'], group['max'],
+                                  alpha=0.5, color=color, linestyle='dashed')
+                high_mutation = max(high_mutation, group['max'].max()) if not group['max'].empty else high_mutation
+            high_mutation = max(high_mutation, group[col_mut].max()) if not group[col_mut].empty else high_mutation
+    else:
+        # Unstranded case
+        color = single_color_mut # Use MUTATION color
+        axs[0].plot(data_mut['Pos'], data_mut[col_mut], label="Actual Mutations", color=color)
+        for idx, row in data_mut.iterrows():
+            marker = 'o'
+            markersize = 20
+            if 'sig_enrich' in row and row['sig_enrich']:
+                marker = '^'
+                markersize = 20
+            elif 'sig_deplete' in row and row['sig_deplete']:
+                marker = 'v'
+                markersize = 20
+            axs[0].scatter(row['Pos'], row[col_mut], marker=marker, s=markersize**2,
+                         color=color, label=None if marker != 'o' else '')
+
+        if 'median' in data_mut and not data_mut['median'].isnull().all():
+            axs[0].plot(data_mut['Pos'], data_mut['median'], linestyle='dashed',
+                       alpha=0.5, color=color)
+        if 'min' in data_mut and 'max' in data_mut and not data_mut['min'].isnull().all() and not data_mut['max'].isnull().all():
+            axs[0].fill_between(data_mut['Pos'], data_mut['min'], data_mut['max'],
+                              alpha=0.5, color=color, linestyle='dashed')
+            high_mutation = max(high_mutation, data_mut['max'].max()) if not data_mut['max'].empty else high_mutation
+        high_mutation = max(high_mutation, data_mut[col_mut].max()) if not data_mut[col_mut].empty else high_mutation
+
+    # --- Plot 2: Projected Mutations (from results_damage) ---
+    high_damage = 0
+    data_dmg = results_damage # Use damage data
+    col_dmg = 'Dmg' # Assume column name is 'Mut' in damage data too
+
+    if 'Strand' in data_dmg.columns:
+        for strand, group in data_dmg.groupby('Strand'):
+            label = "Opposite Strand" if strand == 'Diff' else 'Motif Strand'
+            color = strand_colors_dmg[strand] # Use DAMAGE colors (Mint/Red)
+            axs[1].plot(group['Pos'], group[col_dmg], label=label, color=color)
+
+            # Larger markers for significance (optional for damage, depends on if calculated)
+            for idx, row in group.iterrows():
+                marker = 'o'
+                markersize = 20 # Increased base size
+                # Optional: Add significance markers if relevant for projected data
+                if 'sig_enrich' in row and row['sig_enrich']:
+                    marker = '^'
+                    markersize = 20
+                elif 'sig_deplete' in row and row['sig_deplete']:
+                    marker = 'v'
+                    markersize = 20
+                axs[1].scatter(row['Pos'], row[col_dmg], marker=marker, s=markersize**2,
+                             color=color, label=None if marker != 'o' else '')
+
+            if 'median' in group and not group['median'].isnull().all():
+                axs[1].plot(group['Pos'], group['median'], linestyle='dashed',
+                          alpha=0.5, color=color)
+            if 'min' in group and 'max' in group and not group['min'].isnull().all() and not group['max'].isnull().all():
+                axs[1].fill_between(group['Pos'], group['min'], group['max'],
+                                  alpha=0.5, color=color, linestyle='dashed')
+                high_damage = max(high_damage, group['max'].max()) if not group['max'].empty else high_damage
+            high_damage = max(high_damage, group[col_dmg].max()) if not group[col_dmg].empty else high_damage
+    else:
+        # Unstranded case
+        color = single_color_dmg # Use DAMAGE color (Mint)
+        axs[1].plot(data_dmg['Pos'], data_dmg[col_dmg], label="Projected Mutations", color=color)
+        for idx, row in data_dmg.iterrows():
+            marker = 'o'
+            markersize = 20
+            # Optional: Add significance markers if relevant for projected data
+            if 'sig_enrich' in row and row['sig_enrich']:
+                marker = '^'
+                markersize = 20
+            elif 'sig_deplete' in row and row['sig_deplete']:
+                marker = 'v'
+                markersize = 20
+            axs[1].scatter(row['Pos'], row[col_dmg], marker=marker, s=markersize**2,
+                         color=color, label=None if marker != 'o' else '')
+
+        if 'median' in data_dmg and not data_dmg['median'].isnull().all():
+            axs[1].plot(data_dmg['Pos'], data_dmg['median'], linestyle='dashed',
+                       alpha=0.5, color=color)
+        if 'min' in data_dmg and 'max' in data_dmg and not data_dmg['min'].isnull().all() and not data_dmg['max'].isnull().all():
+            axs[1].fill_between(data_dmg['Pos'], data_dmg['min'], data_dmg['max'],
+                              alpha=0.5, color=color, linestyle='dashed')
+            high_damage = max(high_damage, data_dmg['max'].max()) if not data_dmg['max'].empty else high_damage
+        high_damage = max(high_damage, data_dmg[col_dmg].max()) if not data_dmg[col_dmg].empty else high_damage
+    # --- Set titles and labels ---
+    # Panel 0 (Actual Mutations)
+    # Ensure max_y calculations handle potential NaN/empty data gracefully
+    max_y_mut = (high_mutation // 500 + 1) * 500 if high_mutation > 0 and pd.notna(high_mutation) else 500
+    axs[0].set_ylim(max(-250, -0.1 * max_y_mut) , max_y_mut) # Adjust lower limit slightly
+    axs[0].set_ylabel("Top Half Count")
+    axs[0].set_title(f"MOODS Split Comparison for {tf_name_processed}") # Main title
+
+    # Panel 1 (Projected Mutations)
+    max_y_dmg = (high_damage // 500 + 1) * 500 if high_damage > 0 and pd.notna(high_damage) else 500
+    axs[1].set_ylim(max(-250, -0.1 * max_y_dmg), max_y_dmg)
+    axs[1].set_ylabel("Bottom Half Count")
+
+    # Panel 2 (Logo)
+    axs[1].set_xlabel("Position")
+    # axs[2].set_ylabel("") # Remove redundant label if generate_logo adds one
+
+
+    # --- Shared formatting for all subplots ---
+    # Calculate motif range using the provided motif_length
+    # Note: Using ceil ensures the center is handled consistently for odd/even lengths
+    motif_range = (-(math.ceil(motif_length / 2) - 1), motif_length // 2)
+
+    for i, ax in enumerate(axs):
+        ax.set_xlim(-15.5, 15.5)
+        ax.grid(True, linestyle='--', alpha=0.3)
+
+        # Add motif region shading and boundary lines
+        motif_start = motif_range[0]
+        motif_end = motif_range[1]
+        if i == 2:  # Logo plot (index 2) - use offset for visual clarity with letter stacks
+            motif_start_viz = motif_start - 0.5
+            motif_end_viz = motif_end + 0.5
+        else: # Data plots (index 0, 1) - align directly with positions
+            motif_start_viz = motif_start
+            motif_end_viz = motif_end
+
+        # Apply visual boundaries
+        ax.axvspan(motif_start_viz, motif_end_viz, alpha=0.35, color='grey')
+        ax.axvline(motif_start_viz, linestyle='solid', color='#2b2b2b', linewidth=1)
+        ax.axvline(motif_end_viz, linestyle='solid', color='#2b2b2b', linewidth=1)
+
+        # Center line
+        ax.axvline(0, linestyle='dashed', color='#2b2b2b', linewidth=1)
+
+        # Grid lines per position
+        for x in np.arange(-15, 16, 1): # Ensure range includes 15
+             ax.axvline(x, linestyle='dashed', color='grey', linewidth=0.5, zorder=0) # Send to back
+
+        # Adjust legend handling - only add if labels were generated
+        handles, labels = ax.get_legend_handles_labels()
+        # Consolidate duplicate labels before displaying legend
+        by_label = dict(zip(labels, handles))
+        if by_label: # Check if there are any labels to show
+             ax.legend(by_label.values(), by_label.keys(), loc='upper right', fontsize=40)
+
+    # plt.tight_layout(rect=[0, 0, 1, 0.98]) # Adjust layout if title overlaps - use constrained layout instead
+    plt.show()
+
+    # Use a distinct filename for comparison plots
+    # Ensure save_path ends with a slash if it's a directory
+    # if not save_path.endswith('/'):
+    #     save_path += '/'
+    # Create the directory if it doesn't exist (optional, good practice)
+    # import os
+    # os.makedirs(save_path, exist_ok=True)
+
+    output_filename = f'{save_path}/moods_comparison_{tf_name_processed}_{window}_{level}.png'
+    print(f"Saving figure to: {output_filename}")
+    fig.savefig(output_filename, dpi=600, bbox_inches='tight')
+    plt.close(fig) # Close the figure to free memory
+
+def summary_visuals(results_damage, results_mutation, tf_name, window, mode='damage', level='both'):
     """Generate the complete stacked visualization"""
-    if results_damage is not None:
+    if mode == 'damage' and results_damage is not None:
         plot_stacked_analysis(results_damage, ['Dmg'], tf_name, window, 
                             plus_tf, minus_tf, mode='damage',
                             title_prefix="Damage", 
-                            save_path="../../output/messing_around")
-    else:
+                            save_path="../../output/poster_graphics",
+                            level=level)
+    elif mode == 'mutation' and results_mutation is not None:
         plot_stacked_analysis(results_mutation, ['Mut'], tf_name, window,
                             plus_tf, minus_tf, mode='mutation',
                             title_prefix="Mutation",
-                            save_path="../../output/uv_rescaled_mut")
+                            save_path="../../output/poster_graphics",
+                            level=level)
+    elif mode == 'comp' and results_damage is not None and results_mutation is not None:
+        plot_stacked_comparisons(results_damage, results_mutation, tf_name, window,
+                            plus_tf, minus_tf, motif_length, # Pass motif_length
+                            save_path="../../output/poster_graphics",
+                            level=level)
+
+    elif mode == 'moods' and results_damage is not None and results_mutation is not None:
+        plot_moods_comparisons(results_damage, results_mutation, tf_name, window,
+                            plus_tf, minus_tf, motif_length, # Pass motif_length
+                            save_path="../../output/poster_graphics",
+                            level=level)
+
+    else:
+        raise ValueError("Invalid mode or missing data")
 
 def write_results(tf_name, results):
     from pathlib import Path
@@ -1464,7 +1975,7 @@ def write_results(tf_name, results):
     min_z = relevant['z'].min()
 
     # Write results using context manager
-    output_path = Path('../../output/messing_around') / f'{tf_name}_percentile.out'
+    output_path = Path('/usr/xtmp/bc301/sim_uv_cpd_results') / f'{tf_name}_comparative.out'
     with open(output_path, 'w') as out:
         out.write(f'SIGNIFICANCE ANALYSIS FOR {tf_name}\n\n')
         out.write('Min-Top\t\tNum-Top\t\tMin-Bottom\t\tNum-Bottom\t\tLargest Z\t\tSmallest Z\n')
@@ -1500,7 +2011,7 @@ def write_results_muts(tf_name, results, alpha=0.05):
     min_z = relevant['z'].min()
 
     # Write results using context manager
-    output_path = Path('../../output/uv_rescaled_mut/') / f'{tf_name}.out'
+    output_path = Path('/usr/xtmp/bc301/sim_uv_mutagenic_results/') / f'{tf_name}.out'
     with open(output_path, 'w') as out:
         out.write(f'SIGNIFICANCE ANALYSIS FOR {tf_name} MUTATIONS\n\n')
         out.write('Min-Top\t\tNum-Top\t\tMin-Bottom\t\tNum-Bottom\t\tLargest Z\t\tSmallest Z\n')
@@ -1514,29 +2025,69 @@ def write_results_muts(tf_name, results, alpha=0.05):
         for _, row in significant_bottom.iterrows():
             out.write(f"{row['Pos']}\t{row['P-Value-Bottom']}\t{row['z']}\n")  # Removed Strand
 
-def compare_mutations(counts, mutagenic, actual, tf_name, alpha=0.05, alpha_2=0.5):
-
-    p_combined = pd.concat([mutagenic["Pos"], mutagenic["Mut"], mutagenic["z"], mutagenic["P-Value-Top"], mutagenic["P-Value-Bottom"], actual["Mut"], actual["z"], actual["P-Value-Top"], actual["P-Value-Bottom"]], axis=1)
-    p_combined.columns = ['Pos', 'Counts-Potential', 'Z-Potential', 'PVT-Potential', 'PVB-Potential', 'Counts-Actual', 'Z-Actual', 'PVT-Actual', 'PVB-Actual']
+def compare_mutations(mutagenic, actual, tf_name, motif_range, alpha=0.05, alpha_2=0.5):
+    """
+    Compare mutations between mutagenic and actual datasets, including correlation analysis.
+    
+    Parameters:
+    -----------
+    counts : DataFrame
+        Counts data
+    mutagenic : DataFrame
+        Mutagenic dataset with Pos, Mut, z, P-Value-Top, P-Value-Bottom columns
+    actual : DataFrame
+        Actual dataset with Mut, z, P-Value-Top, P-Value-Bottom columns
+    tf_name : str
+        Name of the transcription factor
+    motif_range : tuple
+        Range of positions defining the core (min, max)
+    alpha : float, default 0.05
+        Significance threshold
+    alpha_2 : float, default 0.5
+        Secondary significance threshold
+    """
+    # Ensure output directory exists
+    import os
+    os.makedirs('/usr/xtmp/bc301/sim_uv_mut_comparisons', exist_ok=True)
+    
+    # Create combined dataframe as before
+    p_combined = pd.concat([mutagenic["Pos"], mutagenic["Mut"], mutagenic["z"], mutagenic["P-Value-Top"], mutagenic["P-Value-Bottom"], 
+                          actual["Mut"], actual["z"], actual["P-Value-Top"], actual["P-Value-Bottom"]], axis=1)
+    p_combined.columns = ['Pos', 'Counts-Potential', 'Z-Potential', 'PVT-Potential', 'PVB-Potential', 
+                          'Counts-Actual', 'Z-Actual', 'PVT-Actual', 'PVB-Actual']
     scale_mut_mutagenic(p_combined, 'Counts-Potential', 'Counts-Actual')
     
+    # Filter for positions between -15 and 15
     significant = p_combined[(p_combined["Pos"] > -15) & (p_combined["Pos"] < 15)]
     
-    significant.to_csv(f'stats/atac_mut/{tf_name}_summary.csv')
-
+    # Calculate overall correlations between z-scores
+    pearson_corr_all = significant['Z-Potential'].corr(significant['Z-Actual'], method='pearson')
+    spearman_corr_all = significant['Z-Potential'].corr(significant['Z-Actual'], method='spearman')
+    
+    # Filter for core positions
+    core = significant[(significant["Pos"] >= motif_range[0]) & (significant["Pos"] <= motif_range[1])]
+    
+    # Calculate correlations for core region
+    pearson_corr_core = core['Z-Potential'].corr(core['Z-Actual'], method='pearson')
+    spearman_corr_core = core['Z-Potential'].corr(core['Z-Actual'], method='spearman')
+    
+    # Existing significance testing
     pvt_actual, pvt_potential = significant['PVT-Actual'] < alpha, significant['PVT-Potential'] < alpha
     pvb_actual, pvb_potential = significant['PVB-Actual'] < alpha, significant['PVB-Potential'] < alpha
 
     pvt_insig_actual, pvt_insig_potential = significant['PVT-Actual'] > alpha_2, significant['PVT-Potential'] > alpha_2
     pvb_insig_actual, pvb_insig_potential = significant['PVB-Actual'] > alpha_2, significant['PVB-Potential'] > alpha_2
-
-    # Print tab-delimited table
-    print("Test\tBoth Sig.\tOnly Potential\tOnly Actual\tNeither")
-    print(f"Enrichment\t{sum(pvt_actual & pvt_potential)}\t{sum(pvt_insig_actual & pvt_potential)}\t{sum(pvt_actual & pvt_insig_potential)}\t{sum(pvt_insig_actual & pvt_insig_potential)}")
-    print(f"Depletion\t{sum(pvb_actual & pvb_potential)}\t{sum(pvb_insig_actual & pvb_potential)}\t{sum(pvb_actual & pvb_insig_potential)}\t{sum(pvb_insig_actual & pvb_insig_potential)}")
-    print("")
-    # print("\n")
-    # print(significant)
+  
+    # Write correlation results to a file
+    with open(f'/usr/xtmp/bc301/sim_uv_mut_comparison_poster/{tf_name}_correlations.txt', 'w') as f:
+        f.write("Test\tBoth Sig.\tOnly Potential\tOnly Actual\tNeither\n")
+        f.write(f"Enrichment\t{sum(pvt_actual & pvt_potential)}\t{sum(pvt_insig_actual & pvt_potential)}\t{sum(pvt_actual & pvt_insig_potential)}\t{sum(pvt_insig_actual & pvt_insig_potential)}\n")
+        f.write(f"Depletion\t{sum(pvb_actual & pvb_potential)}\t{sum(pvb_insig_actual & pvb_potential)}\t{sum(pvb_actual & pvb_insig_potential)}\t{sum(pvb_insig_actual & pvb_insig_potential)}\n")
+        f.write("\n")
+        f.write(f"Pearson correlation (all positions): {pearson_corr_all:.4f}\n")
+        f.write(f"Spearman correlation (all positions): {spearman_corr_all:.4f}\n")
+        f.write(f"Pearson correlation (core positions): {pearson_corr_core:.4f}\n")
+        f.write(f"Spearman correlation (core positions): {spearman_corr_core:.4f}\n")
 
 def permutation_statistic(x, y):
     dof = len(x) - 2
@@ -1629,7 +2180,7 @@ def analyze(tf_name, num_runs, run_id, window=20):
 
     #tree = process_intervals(read_tf_file("tf_exp/accessible_ETS1_plus.bed") + read_tf_file("tf_exp/accessible_ETS1_minus.bed"), 300)
     # tree = process_intervals(read_tf_file(f'/home/users/bc301/scripts/intervals/accessibility/processed_clusters/a549/{tf_name}.bed'), window)
-    tree = process_intervals(read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_plus_high.bed') + read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_minus_high.bed'), window)
+    
     # tree = process_intervals(read_tf_file(f'../../data/tfbs/a549/{tf_name}/{tf_name}_plus_high.bed') + read_tf_file(f'../../data/tfbs/a549/{tf_name}/{tf_name}_minus_high.bed'), window)
     # tree = process_intervals(read_tf_file(f'ETS_1_pyr3.bed'), window) # test wyrick fig. 4
     # intervals = hold_interval_indices('acc_regions/atac_accessibility_sorted.bed')
@@ -1638,10 +2189,12 @@ def analyze(tf_name, num_runs, run_id, window=20):
 
     # intervals = hold_interval_indices('/home/users/bc301/scripts/intervals/accessibility/accessibility_sorted.bed')
     
-    intervals = hold_interval_indices('../../data/raw/atac_150bp_intervals_merged.bed')
-    # intervals = hold_interval_indices('../../data/raw/a549_regions_merged.bed')
 
-    # DAMAGE ANALYSIS !!!
+    tree = process_intervals(read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_plus.bed') + read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_minus.bed'), window)
+    intervals = hold_interval_indices('../../data/raw/atac_150bp_intervals_merged.bed')
+
+    # ------------------------------------------------------------
+
     total_runs = build_runs(num_runs, intervals, tree, window, 'cell')
     intersection_dmgs = process_dmgs('../../data/damages/atac_nb_plus.bed', '../../data/damages/atac_nb_minus.bed', tree, window) #= 
     # intersection_dmgs = process_dmgs('../../data/damages/a549_bpde_1_2_plus.bed', '../../data/damages/a549_bpde_1_2_minus.bed', tree, window) #= 
@@ -1649,21 +2202,91 @@ def analyze(tf_name, num_runs, run_id, window=20):
     combined_dmg = pd.concat([intersection_dmgs, total_runs], axis=1)
 
     # #add_stats(combined_dmg, num_runs)
-    add_stats_split(combined_dmg, num_runs)
+    add_stats_split(combined_dmg, num_runs, f"/usr/xtmp/bc301/sim_uv_cpd_results/{tf_name}_cell.csv")
     # combined_dmg.to_csv(f"../../output/messing_around/{tf_name}_{num_runs}_{window}_dmg_raw_{run_id}_nb.csv")
     
     total_runs_naked = build_runs(num_runs, intervals, tree, window, 'naked')
     intersection_dmgs_naked = process_dmgs('../../data/damages/atac_naked_plus.bed', '../../data/damages/atac_naked_minus.bed', tree, window)
     combined_dmg_naked = pd.concat([intersection_dmgs_naked, total_runs_naked], axis=1)
-    add_stats_split(combined_dmg_naked, num_runs)
+    add_stats_split(combined_dmg_naked, num_runs, f"/usr/xtmp/bc301/sim_uv_cpd_results/{tf_name}_naked.csv")
+
+    # ------------------------------------------------------------
+
+    # ------------------------------------------------------------
 
     percentile_99 = 3.8608426497040904
     percentile_1 = -4.022984934312098
 
-    p_value_qc(combined_dmg, combined_dmg_naked, 'Percentile', [percentile_99, percentile_1])
-    write_results(tf_name, combined_dmg)
-    summary_visuals(combined_dmg, None, tf_name, window, mode='damage')
+    p_value_qc(combined_dmg, combined_dmg_naked, 'Comparative', [percentile_99, percentile_1])
+    # write_results(tf_name, combined_dmg)
+    summary_visuals(combined_dmg, None, tf_name, window, mode='damage', level='both')
 
+    # intervals = hold_interval_indices('../../data/raw/a549_regions_merged.bed')
+
+    #DAMAGE ANALYSIS !!!
+
+    # ------------------------------------------------------------
+
+    # TOP HALF
+
+    # tree_top = process_intervals(read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_plus_high.bed') + read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_minus_high.bed'), window)
+
+    # total_runs_top = build_runs(num_runs, intervals, tree_top, window, 'cell')
+    # intersection_dmgs_top = process_dmgs('../../data/damages/atac_nb_plus.bed', '../../data/damages/atac_nb_minus.bed', tree_top, window) #= 
+    # # intersection_dmgs = process_dmgs('../../data/damages/a549_bpde_1_2_plus.bed', '../../data/damages/a549_bpde_1_2_minus.bed', tree, window) #= 
+
+    # combined_dmg_top = pd.concat([intersection_dmgs_top, total_runs_top], axis=1)
+
+    # # #add_stats(combined_dmg, num_runs)
+    # add_stats_split(combined_dmg_top, num_runs, f"../../output/poster_graphics/{tf_name}_cell_top.csv")
+    # # combined_dmg.to_csv(f"../../output/messing_around/{tf_name}_{num_runs}_{window}_dmg_raw_{run_id}_nb.csv")
+    
+    # total_runs_naked_top = build_runs(num_runs, intervals, tree_top, window, 'naked')
+    # intersection_dmgs_naked_top = process_dmgs('../../data/damages/atac_naked_plus.bed', '../../data/damages/atac_naked_minus.bed', tree_top, window)
+    # combined_dmg_naked_top = pd.concat([intersection_dmgs_naked_top, total_runs_naked_top], axis=1)
+    # add_stats_split(combined_dmg_naked_top, num_runs, f"../../output/poster_graphics/{tf_name}_naked_top.csv")
+
+    # # ------------------------------------------------------------
+
+    # percentile_99 = 3.8608426497040904
+    # percentile_1 = -4.022984934312098
+
+    # p_value_qc(combined_dmg_top, combined_dmg_naked_top, 'Comparative', [percentile_99, percentile_1])
+    # # write_results(tf_name, combined_dmg)
+    # # summary_visuals(combined_dmg_top, None, tf_name, window, mode='damage', level='high')
+
+    # ------------------------------------------------------------
+
+    # BOTTOM HALF
+
+    # tree_bottom = process_intervals(read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_plus_low.bed') + read_tf_file(f'../../data/tfbs/fib_atac/{tf_name}/{tf_name}_minus_low.bed'), window)
+    # total_runs_bottom = build_runs(num_runs, intervals, tree_bottom, window, 'cell')
+    # intersection_dmgs_bottom = process_dmgs('../../data/damages/atac_nb_plus.bed', '../../data/damages/atac_nb_minus.bed', tree_bottom, window) #= 
+    # # intersection_dmgs = process_dmgs('../../data/damages/a549_bpde_1_2_plus.bed', '../../data/damages/a549_bpde_1_2_minus.bed', tree, window) #= 
+
+    # combined_dmg_bottom = pd.concat([intersection_dmgs_bottom, total_runs_bottom], axis=1)
+
+    # # #add_stats(combined_dmg, num_runs)
+    # add_stats_split(combined_dmg_bottom, num_runs, f"../../output/poster_graphics/{tf_name}_cell_bottom.csv")
+    # # combined_dmg.to_csv(f"../../output/messing_around/{tf_name}_{num_runs}_{window}_dmg_raw_{run_id}_nb.csv")
+    
+    # total_runs_naked_bottom = build_runs(num_runs, intervals, tree_bottom, window, 'naked')
+    # intersection_dmgs_naked_bottom = process_dmgs('../../data/damages/atac_naked_plus.bed', '../../data/damages/atac_naked_minus.bed', tree_bottom, window)
+    # combined_dmg_naked_bottom = pd.concat([intersection_dmgs_naked_bottom, total_runs_naked_bottom], axis=1)
+    # add_stats_split(combined_dmg_naked_bottom, num_runs, f"../../output/poster_graphics/{tf_name}_naked_bottom.csv")
+
+    # # ------------------------------------------------------------
+
+    # # percentile_99 = 3.8608426497040904
+    # # percentile_1 = -4.022984934312098
+
+    # p_value_qc(combined_dmg_bottom, combined_dmg_naked_bottom, 'Comparative', [percentile_99, percentile_1])
+    # # write_results(tf_name, combined_dmg)
+    # # summary_visuals(combined_dmg_bottom, None, tf_name, window, mode='damage', level='low')
+
+    # summary_visuals(combined_dmg_bottom, combined_dmg_top, tf_name, window, mode='moods')
+
+    # # ------------------------------------------------------------
 
 
 
@@ -1675,23 +2298,35 @@ def analyze(tf_name, num_runs, run_id, window=20):
     # add_stats(combined_dmg, num_runs)
     # combined_dmg.to_csv(f"../../output/preprocessed/raw/{tf_name}_{num_runs}_{window}_dmg_raw.csv")
 
+    # ------------------------------------------------------------
     # FOR MUTAGENIC (POTENTIAL DAMAGE)
-    # intersection_mutagenic = process_muts('mutations/mutagenic_combined_Conly.bed', tree, window)
+    # intersection_mutagenic = process_muts('../../data/damages/atac_nb_mutagenic.bed', tree, window)
     # total_mutagenic = build_muts(num_runs, intervals, tree, window, 'potential')
 
-    # FOR ACTUAL MUTATIONS
+    # combined_mutagenic = pd.concat([intersection_mutagenic, total_mutagenic], axis=1)
+    # add_stats_mut_split(combined_mutagenic, num_runs, f"/usr/xtmp/bc301/sim_uv_mut_results_both/{tf_name}_sim.csv")
+
+    # # FOR ACTUAL MUTATIONS
     # intersection_muts = process_muts('../../data/raw/atac_mutations_transitions_C_only.bed', tree, window)
     
-    # get_memory_usage("Before mutation build")
+    # # # get_memory_usage("Before mutation build")
     # total_muts = build_muts(num_runs, intervals, tree, window, 'actual')
-    # get_memory_usage("After mutation build")
+    # # # get_memory_usage("After mutation build")
     
     # combined_mut = pd.concat([intersection_muts, total_muts], axis=1)
-    # add_stats_mut_split(combined_mut, num_runs)
+    # add_stats_mut_split(combined_mut, num_runs, f"/usr/xtmp/bc301/sim_uv_mut_results_both/{tf_name}_actual.csv")
+
+    # # ------------------------------------------------------------ 
+
+    # # global motif_range
+    # summary_visuals(combined_mutagenic, combined_mut, tf_name, window, mode='comp')
+    # compare_mutations(combined_mutagenic, combined_mut, tf_name, motif_range)
 
     # combined_mut.to_csv(f"../../output/uv_rescaled_mut/{tf_name}_{num_runs}_{window}_mutation.csv")
-    # summary_visuals(None, combined_mut, tf_name, window, mode='mutation')
-    # write_results_muts(tf_name, combined_mut)
+    
+    # write_results_muts(tf_name, combined_mutagenic)
+
+    
 
     # comparison = pd.concat([intersection_mutagenic, intersection_muts], axis=1)
     # comparison.columns = ['Potential', 'Actual']
