@@ -1,3 +1,5 @@
+This repository containing code for the SIDEARM version 1 pipeline by Chi et. al., as submitted for review in the ISMB 2025 Proceedings. Version 2 of SIDEARM is currently in the works, soon to be released within the next two weeks!
+
 ## Overview
 
 SIDEARM is a computational framework for analyzing DNA damage patterns and their relationship to mutational signatures in genomic regions. The core methodology employs simulation-based inference to test whether observed mutational patterns at specific genomic features (e.g., transcription factor binding sites, enhancers) show enrichment or depletion compared to random distribution expectations.
@@ -86,6 +88,3 @@ python scripts/redistribution_mut_optimized.py <INPUT_FILE> <OUTPUT_FILE>
 4. **Visualization**:
    - Plot generation using Matplotlib and Logomaker
    - Visualization of damage profiles, sequence logos, and statistical metrics
-
-
-This repository containing code for the SIDEARMv1 pipeline by Chi et. al., as submitted for review in the ISMB 2025 Proceedings. Version 2 of SIDEARM is currently in the works, soon to be released within the next two weeks!
