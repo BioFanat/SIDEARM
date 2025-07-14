@@ -15,7 +15,7 @@ SIDEARM (Statistical Inference for Damage and Repair at Motifs) is a pipeline fo
 - **Statistical Framework**: Simulation methods to establish statistical significance with FDR correction
 - **Visualization Tools**: Plot generation for damage profiles, Z-scores, p-values, and sequence logos
 
-## Common Commands
+## Commands
 
 ### Running Intersection Analysis
 
