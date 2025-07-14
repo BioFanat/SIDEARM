@@ -1,7 +1,3 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
 SIDEARM (Statistical Inference for Damage and Repair at Motifs) is a pipeline for analyzing DNA damage and repair around transcription factor binding sites. The code contains multiple Python scripts for processing, encoding, and analyzing genomic data including:
@@ -86,24 +82,3 @@ python scripts/redistribution_mut_optimized.py <INPUT_FILE> <OUTPUT_FILE>
 4. **Visualization**:
    - Plot generation using Matplotlib and Logomaker
    - Visualization of damage profiles, sequence logos, and statistical metrics
-
-### Important Files
-
-- `scripts/program_utils.py`: Core shared utilities for file loading, sequence manipulation, and encoding
-- `scripts/intersection_counting.py`: Main script for analyzing overlaps and significance
-- `scripts/intersection_optimized.py`: Optimized version of the intersection counter
-- `scripts/redistribution_optimized.py`: Optimized redistribution algorithms
-- `scripts/kmer_config.py`: Configurable k-mer system for different damage types
-- `scripts/interval_extraction_generalized.py`: Generalized k-mer extraction
-- `scripts/redistribution_generalized.py`: Generalized damage redistribution
-- `scripts/redistribution_mut_generalized.py`: Generalized mutation redistribution
-- `scripts/22/encoding_utils.py` and `scripts/22/general_utils.py`: Newer utility functions
-- `scripts/genome_utils/program_utils.py`: Utilities for genomic analysis
-
-## Development Notes
-
-- Many functions need a genome dictionary loaded from a FASTA file for sequence context
-- Most analyses operate on processed BED files containing genomic positions and values
-- File paths are often hard-coded and may need to be adjusted
-- Analysis of both cellular and "naked" DNA damage is typically performed for comparison
-- The code uses multiprocessing for parallel processing of simulations
